@@ -909,6 +909,15 @@ class AgentLoop:
         finally:
             reset_file_states(file_state_token)
         self._last_usage = result.usage
+        from nanobot.utils.usage_log import record_usage
+        record_usage(
+            self.workspace,
+            model=self.model,
+            provider=type(self.provider).__name__.replace("Provider", "").lower(),
+            prompt_tokens=result.usage.get("prompt_tokens", 0),
+            completion_tokens=result.usage.get("completion_tokens", 0),
+            tools_used=len(result.tools_used),
+        )
         if result.stop_reason == "max_iterations":
             logger.warning("Max iterations ({}) reached", self.max_iterations)
             # Push final content through stream so streaming channels (e.g. Feishu)

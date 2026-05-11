@@ -13,6 +13,7 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.command.router import CommandContext, CommandRouter
 from nanobot.utils.helpers import build_status_content
 from nanobot.utils.restart import set_restart_notice_to_env
+from nanobot.utils.usage_log import format_insights, query_usage
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,13 @@ BUILTIN_COMMAND_SPECS: tuple[BuiltinCommandSpec, ...] = (
         "Restore memory",
         "Revert memory to a previous Dream snapshot.",
         "undo-2",
+    ),
+    BuiltinCommandSpec(
+        "/insights",
+        "Usage stats",
+        "Show token usage statistics over time.",
+        "bar-chart-3",
+        "[n|all]",
     ),
     BuiltinCommandSpec(
         "/help",
@@ -449,6 +457,36 @@ async def cmd_history(ctx: CommandContext) -> OutboundMessage:
     )
 
 
+async def cmd_insights(ctx: CommandContext) -> OutboundMessage:
+    """Show token usage statistics."""
+    msg = ctx.msg
+    arg = ctx.args.strip().lower()
+
+    if arg == "all":
+        days = None
+    elif arg == "":
+        days = 7
+    else:
+        try:
+            days = max(1, int(arg))
+        except ValueError:
+            return OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id,
+                content="Usage: /insights [days|all] — e.g. /insights 30",
+                metadata=dict(msg.metadata or {}),
+            )
+
+    stats = query_usage(ctx.loop.workspace, days=days)
+    content = format_insights(stats, days=days)
+
+    return OutboundMessage(
+        channel=msg.channel,
+        chat_id=msg.chat_id,
+        content=content,
+        metadata={**dict(msg.metadata or {}), "render_as": "text"},
+    )
+
+
 async def cmd_help(ctx: CommandContext) -> OutboundMessage:
     """Return available slash commands."""
     return OutboundMessage(
@@ -479,6 +517,8 @@ def register_builtin_commands(router: CommandRouter) -> None:
     router.exact("/status", cmd_status)
     router.exact("/history", cmd_history)
     router.prefix("/history ", cmd_history)
+    router.exact("/insights", cmd_insights)
+    router.prefix("/insights ", cmd_insights)
     router.exact("/dream", cmd_dream)
     router.exact("/dream-log", cmd_dream_log)
     router.prefix("/dream-log ", cmd_dream_log)
