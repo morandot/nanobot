@@ -10,7 +10,7 @@
     "dev": "tsc && node dist/index.js"
   },
   "dependencies": {
-    "spectrum-ts": "^1.0.0"
+    "spectrum-ts": "1.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

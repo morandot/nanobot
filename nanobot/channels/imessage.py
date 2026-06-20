@@ -2,12 +2,14 @@
 
 import asyncio
 import hashlib
+import io
 import json
 import mimetypes
 import os
 import shutil
 import socket
 import subprocess
+import threading
 from collections import OrderedDict
 from contextlib import suppress
 from pathlib import Path
@@ -60,6 +62,7 @@ class IMessageChannel(BaseChannel):
         self._proc: subprocess.Popen | None = None
         self._client: httpx.AsyncClient | None = None
         self._inbound_client: httpx.AsyncClient | None = None
+        self._stderr_thread: threading.Thread | None = None
         self._processed_message_ids: OrderedDict[str, None] = OrderedDict()
 
     async def login(self, force: bool = False) -> bool:
@@ -231,8 +234,19 @@ class IMessageChannel(BaseChannel):
             cwd=sidecar_dir,
             env=env,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
         )
+        # Forward sidecar stderr to nanobot logger on a daemon thread so it
+        # never blocks the main loop.  stdout stays DEVNULL — spectrum-ts
+        # already logs to stderr via its own structured logger.
+        if self._proc.stderr:
+            self._stderr_thread = threading.Thread(
+                target=_forward_stderr,
+                args=(self._proc.stderr, self.logger),
+                daemon=True,
+            )
+            self._stderr_thread.start()
 
     async def _handle_inbound(self, data: dict) -> None:
         """Handle an inbound message from the sidecar."""
@@ -295,6 +309,18 @@ class IMessageChannel(BaseChannel):
             },
             is_dm=not is_group,
         )
+
+
+def _forward_stderr(stream: io.TextIOBase, logger: Any) -> None:
+    """Read lines from *stream* and forward them to *logger* at WARNING level.
+
+    Runs on a daemon thread so it never blocks the event loop.  Exits when
+    the stream is closed (sidecar exits or pipe is broken).
+    """
+    for line in stream:
+        line = line.rstrip("\n")
+        if line:
+            logger.warning("sidecar: {}", line)
 
 
 def _ensure_sidecar_setup() -> Path:
