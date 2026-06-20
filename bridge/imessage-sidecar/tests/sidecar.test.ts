@@ -32,31 +32,38 @@ function makeFakeIm(known: Record<string, any>) {
 
 describe("resolveSpace", () => {
   it("cache hit: returns cached space without SDK call", async () => {
-    const known = makeFakeSpace("dm-123");
+    const known = makeFakeSpace("any;-;+15551234567");
     const cache = new Map<string, any>();
-    cache.set("dm-123", known);
+    cache.set("any;-;+15551234567", known);
     const im = makeFakeIm({}); // empty — should never be called
 
-    const result = await resolveSpace(im, cache, "dm-123");
+    const result = await resolveSpace(im, cache, "any;-;+15551234567");
     assert.equal(result, known);
   });
 
-  it("cache miss + SDK success: resolves and caches", async () => {
-    const known = makeFakeSpace("dm-123");
+  it("cache miss + SDK resolve by phone: resolves and caches", async () => {
+    const known = makeFakeSpace("any;-;+15551234567");
     const cache = new Map<string, any>();
-    const im = makeFakeIm({ "user-1": known });
+    const im = makeFakeIm({ "+15551234567": known });
 
-    const result = await resolveSpace(im, cache, "user-1");
+    const result = await resolveSpace(im, cache, "any;-;+15551234567");
     assert.equal(result, known);
-    // Should be cached for next call
-    assert.equal(cache.get("dm-123"), known);
+    assert.equal(cache.get("any;-;+15551234567"), known);
   });
 
-  it("cache miss + SDK failure: returns null", async () => {
+  it("cache miss + non-phone spaceId: returns null immediately", async () => {
     const cache = new Map<string, any>();
-    const im = makeFakeIm({});
+    const im = makeFakeIm({}); // never called — spaceId has no phone
 
-    const result = await resolveSpace(im, cache, "unknown");
+    const result = await resolveSpace(im, cache, "opaque-group-id");
+    assert.equal(result, null);
+  });
+
+  it("cache miss + phone extraction + SDK fails: returns null", async () => {
+    const cache = new Map<string, any>();
+    const im = makeFakeIm({}); // phone not in known set
+
+    const result = await resolveSpace(im, cache, "any;-;+19999999999");
     assert.equal(result, null);
   });
 });

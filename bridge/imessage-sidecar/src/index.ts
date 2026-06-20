@@ -52,13 +52,22 @@ export function resolveSpace(
   const cached = spaceCache.get(spaceId);
   if (cached) return Promise.resolve(cached);
 
-  return im.space(spaceId).then(
-    (resolved: Space) => {
-      spaceCache.set(resolved.id, resolved);
-      return resolved;
-    },
-    () => null
-  );
+  // Cold start: try to reconstruct the space from the chat_id.
+  // Spectrum space IDs for DMs take the form "any;-;+15551234567" where
+  // the phone number is the last segment.  Group chat IDs are opaque
+  // and cannot be resolved this way.
+  const phone = spaceId.split(";-;").pop();
+  if (phone && phone.startsWith("+")) {
+    return im.space(phone).then(
+      (resolved: Space) => {
+        spaceCache.set(resolved.id, resolved);
+        return resolved;
+      },
+      () => null
+    );
+  }
+
+  return Promise.resolve(null);
 }
 
 // ── Entry point ────────────────────────────────────────────────────────
@@ -221,7 +230,8 @@ async function main() {
 // Only run main() when executed directly, not when imported for testing.
 const isMain =
   process.argv[1] &&
-  (process.argv[1].endsWith("/dist/index.js") ||
+  (process.argv[1].endsWith("dist/index.js") ||
+    process.argv[1].endsWith("/dist/index.js") ||
     process.argv[1].endsWith("/src/index.ts") ||
     process.argv[1].endsWith("/src/index.js"));
 
